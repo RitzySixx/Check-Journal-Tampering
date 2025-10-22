@@ -1,6 +1,11 @@
 # Clear the console screen
 Clear-Host
 
+# Script header
+Write-Host "USN Journal Tampering Check" -ForegroundColor Magenta
+Write-Host "=============================" -ForegroundColor Magenta
+Write-Output ""
+
 # Function to check if a log exists
 function LogExists($logName) {
     try {
@@ -10,10 +15,6 @@ function LogExists($logName) {
         return $false
     }
 }
-
-# Check System log for Event ID 98 (NTFS volume health check)
-$systemUSN = Get-WinEvent -FilterHashtable @{LogName='System'; Id=98} -ErrorAction SilentlyContinue |
-    Select-Object TimeCreated, Id, @{n='Message';e={$_.Message -replace "`r`n"," "}}
 
 # Check Application log for Event ID 3079 (AppLocker/WDAC blocks or VM prep)
 $appUSN = Get-WinEvent -FilterHashtable @{LogName='Application'; Id=3079} -ErrorAction SilentlyContinue |
@@ -42,7 +43,7 @@ if (LogExists 'Security') {
 }
 
 # Combine and display all events
-$allEvents = @($systemUSN + $appUSN + $dfsUSN + $frsUSN + $secUSN) | Where-Object { $_ } | Sort-Object TimeCreated
+$allEvents = @($appUSN + $dfsUSN + $frsUSN + $secUSN) | Where-Object { $_ } | Sort-Object TimeCreated
 Write-Output ""
 if ($allEvents) {
     Write-Host "Relevant Events Found:" -ForegroundColor Green
@@ -59,5 +60,21 @@ try {
     Write-Host ($journal | Out-String) -ForegroundColor Yellow
 } catch {
     Write-Host "Error querying USN journal for C: drive. Ensure drive exists and you have admin privileges." -ForegroundColor Red
+}
+Write-Output ""
+
+# Get Creation Time for the USN Journal ($J)
+Write-Host "Retrieving Creation Time for the USN Journal ($J)..." -ForegroundColor Cyan
+try {
+    $journalPath = "C:\$Extend\$UsnJrnl"
+    $journalFile = Get-Item -Path $journalPath -Force -ErrorAction SilentlyContinue
+    if ($journalFile) {
+        Write-Host "USN Journal Creation Time:" -ForegroundColor Yellow
+        $journalFile | Select-Object Name, CreationTime | Format-Table -AutoSize | Out-String | Write-Host -ForegroundColor Yellow
+    } else {
+        Write-Host "Could not access USN Journal file. Ensure you have admin privileges and the path is correct." -ForegroundColor Red
+    }
+} catch {
+    Write-Host "Error retrieving USN Journal Creation Time." -ForegroundColor Red
 }
 Write-Output ""
