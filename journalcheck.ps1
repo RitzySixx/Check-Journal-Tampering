@@ -38,12 +38,23 @@ if (LogExists 'File Replication Service') {
 $secUSN = $null
 if (LogExists 'Security') {
     $secUSN = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688} -ErrorAction SilentlyContinue |
-        Where-Object { $_.Message -match 'fsutil.*usn.*deletejournal' } |
+        Where-Object { 
+            $_.Message -match 'fsutil.*usn.*deletejournal' -or
+            $_.Message -match 'wevtutil.*cl' -or
+            $_.Message -match 'Clear-EventLog'
+        } |
         Select-Object TimeCreated, Id, @{n='Message';e={$_.Message -replace "`r`n"," "}}
 }
 
+# Check System log for Event ID 104 (Event Log cleared)
+$sysClear = $null
+if (LogExists 'System') {
+    $sysClear = Get-WinEvent -FilterHashtable @{LogName='System'; Id=104} -ErrorAction SilentlyContinue |
+        Select-Object TimeCreated, Id, @{n='Message'; e={$_.Message -replace "`r`n"," "}}
+}
+
 # Combine and display all events
-$allEvents = @($appUSN + $dfsUSN + $frsUSN + $secUSN) | Where-Object { $_ } | Sort-Object TimeCreated
+$allEvents = @($appUSN + $dfsUSN + $frsUSN + $secUSN + $sysClear) | Where-Object { $_ } | Sort-Object TimeCreated
 Write-Output ""
 if ($allEvents) {
     Write-Host "Relevant Events Found:" -ForegroundColor Green
@@ -60,6 +71,35 @@ try {
     Write-Host ($journal | Out-String) -ForegroundColor Yellow
 } catch {
     Write-Host "Error querying USN journal for C: drive. Ensure drive exists and you have admin privileges." -ForegroundColor Red
+}
+Write-Output ""
+
+# --- Journal Recreation Detection ---
+Write-Host "Checking if Journal ID has changed since last run..." -ForegroundColor Cyan
+
+$journalInfo = fsutil usn queryjournal C: 2>$null
+if ($journalInfo) {
+    # Extract the Journal ID
+    $currentID = ($journalInfo | Select-String "Journal ID").ToString().Split(":")[1].Trim()
+    $savePath = "$env:ProgramData\USN_Journal_ID.txt"
+
+    if (Test-Path $savePath) {
+        $previousID = Get-Content $savePath
+        if ($previousID -ne $currentID) {
+            Write-Host "⚠️  Journal ID has changed! The USN Journal may have been deleted or recreated." -ForegroundColor Red
+            Write-Host "Previous ID: $previousID" -ForegroundColor Yellow
+            Write-Host "Current ID:  $currentID" -ForegroundColor Yellow
+        } else {
+            Write-Host "✅ Journal ID matches previous run (no recreation detected)." -ForegroundColor Green
+        }
+    } else {
+        Write-Host "No previous Journal ID found — saving current ID for future comparison." -ForegroundColor Yellow
+    }
+
+    # Save the current ID for future comparison
+    $currentID | Out-File -FilePath $savePath -Force -Encoding ascii
+} else {
+    Write-Host "Unable to read Journal ID (fsutil may have failed or requires admin privileges)." -ForegroundColor Red
 }
 Write-Output ""
 
