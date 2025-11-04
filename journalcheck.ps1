@@ -74,35 +74,6 @@ try {
 }
 Write-Output ""
 
-# --- Journal Recreation Detection ---
-Write-Host "Checking if Journal ID has changed since last run..." -ForegroundColor Cyan
-
-$journalInfo = fsutil usn queryjournal C: 2>$null
-if ($journalInfo) {
-    # Extract the Journal ID
-    $currentID = ($journalInfo | Select-String "Journal ID").ToString().Split(":")[1].Trim()
-    $savePath = "$env:ProgramData\USN_Journal_ID.txt"
-
-    if (Test-Path $savePath) {
-        $previousID = Get-Content $savePath
-        if ($previousID -ne $currentID) {
-            Write-Host "⚠️  Journal ID has changed! The USN Journal may have been deleted or recreated." -ForegroundColor Red
-            Write-Host "Previous ID: $previousID" -ForegroundColor Yellow
-            Write-Host "Current ID:  $currentID" -ForegroundColor Yellow
-        } else {
-            Write-Host "✅ Journal ID matches previous run (no recreation detected)." -ForegroundColor Green
-        }
-    } else {
-        Write-Host "No previous Journal ID found — saving current ID for future comparison." -ForegroundColor Yellow
-    }
-
-    # Save the current ID for future comparison
-    $currentID | Out-File -FilePath $savePath -Force -Encoding ascii
-} else {
-    Write-Host "Unable to read Journal ID (fsutil may have failed or requires admin privileges)." -ForegroundColor Red
-}
-Write-Output ""
-
 # Get Creation Time for the USN Journal ($J)
 Write-Host "Retrieving Creation Time for the USN Journal ($J)..." -ForegroundColor Cyan
 try {
